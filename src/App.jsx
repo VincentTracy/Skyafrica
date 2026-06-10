@@ -57,6 +57,38 @@ const FONT_CSS = `
   @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.4 } }
   @keyframes arcDraw { from { stroke-dashoffset: 200 } to { stroke-dashoffset: 0 } }
   @keyframes spin { to { transform: rotate(360deg) } }
+
+  /* ── MOBILE RESPONSIVENESS ── */
+  html, body { overflow-x: hidden; max-width: 100%; }
+
+  @media (max-width: 860px) {
+    .nav-corridors { display: none !important; }
+    .logo-sub { display: none !important; }
+    .nav-bar { padding: 0 14px !important; gap: 8px !important; }
+    .nav-links { overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links button { padding: 6px 9px !important; font-size: 12px !important; }
+    .footer-grid { grid-template-columns: 1fr 1fr !important; gap: 28px 16px !important; }
+    .footer-brand { grid-column: 1 / -1; }
+    .stats-grid { grid-template-columns: repeat(2,1fr) !important; }
+  }
+
+  @media (max-width: 540px) {
+    .nav-links button { padding: 6px 7px !important; font-size: 11px !important; }
+    .currency-label { display: none !important; }
+    .footer-grid { grid-template-columns: 1fr !important; }
+    .scanner-toggles { gap: 4px !important; }
+    .scanner-toggles button { padding: 5px 9px !important; font-size: 9px !important; }
+    .flight-card-grid { grid-template-columns: 1fr !important; gap: 14px; padding: 16px !important; }
+    .flight-card-grid > div:nth-child(2) { padding: 0 !important; text-align: left !important; }
+    .flight-card-grid > div:nth-child(3) a { width: 100%; }
+    .deal-card-grid { grid-template-columns: 48px 1fr !important; }
+    .deal-card-grid > div:nth-child(3),
+    .deal-card-grid > div:nth-child(4) {
+      grid-column: 2; border-left: none !important; border-top: 1px solid #1C3148; text-align: left !important;
+      flex-direction: row !important; justify-content: space-between !important; align-items: center !important;
+    }
+  }
 `;
 
 const sg  = "'Space Grotesk', system-ui, sans-serif";
@@ -377,7 +409,7 @@ function Nav({ page, go, cur, setCur, det, detecting, fmt }) {
   return (
     <div style={{ position:"sticky", top:0, zIndex:500 }}>
       <Ticker fmt={fmt} detecting={detecting}/>
-      <nav style={{
+      <nav className="nav-bar" style={{
         background:"rgba(7,17,28,0.96)", backdropFilter:"blur(24px)",
         borderBottom:`1px solid ${T.dim}`,
         height:58, display:"flex", alignItems:"center", padding:"0 24px", gap:16,
@@ -395,12 +427,12 @@ function Nav({ page, go, cur, setCur, det, detecting, fmt }) {
             <div style={{ fontFamily:mono, fontSize:14, fontWeight:700, color:T.hi, letterSpacing:"0.5px", lineHeight:1 }}>
               Sky<span style={{ color:T.gold }}>Afrika</span>
             </div>
-            <div style={{ fontFamily:mono, fontSize:7, color:T.ghost, letterSpacing:"2.5px", marginTop:2 }}>FLIGHT AGGREGATOR</div>
+            <div className="logo-sub" style={{ fontFamily:mono, fontSize:7, color:T.ghost, letterSpacing:"2.5px", marginTop:2 }}>FLIGHT AGGREGATOR</div>
           </div>
         </div>
 
         {/* Nav links */}
-        <div style={{ display:"flex", flex:1, gap:0 }}>
+        <div className="nav-links" style={{ display:"flex", flex:1, gap:0 }}>
           {links.map(([id, l]) => (
             <button key={id} onClick={() => go(id)} style={{
               padding:"6px 12px", border:"none", cursor:"pointer", background:"transparent",
@@ -415,7 +447,7 @@ function Nav({ page, go, cur, setCur, det, detecting, fmt }) {
         </div>
 
         {/* Country chips */}
-        <div style={{ display:"flex", gap:3, alignItems:"center", flexShrink:0 }}>
+        <div className="nav-corridors" style={{ display:"flex", gap:3, alignItems:"center", flexShrink:0 }}>
           {[
             {f:"🇿🇼",l:"ZIM"}, {f:"🇿🇦",l:"SA"}, {f:"🇳🇬",l:"NGA"},
             {f:"🇪🇬",l:"EGY",c:T.egy,nw:true}, {f:"🇲🇦",l:"MAR",c:T.mar,nw:true}, {f:"🇩🇿",l:"DZA",c:T.dza,nw:true},
@@ -454,7 +486,7 @@ function Nav({ page, go, cur, setCur, det, detecting, fmt }) {
               display:"inline-block",
               animation:"spin 0.7s linear infinite",
             }}/>
-            <span>Detecting…</span>
+            <span className="currency-label">Detecting…</span>
           </div>
         ) : (
           <CurrPicker cur={cur} setCur={setCur} det={det}/>
@@ -761,7 +793,7 @@ function ScannerPage({ fmt, cur, detecting }) {
       {/* Search Form */}
       <div style={{ background:T.card, border:`1px solid ${T.dim}`, borderRadius:20, padding:"28px", marginBottom:28, boxShadow:`0 12px 48px rgba(0,0,0,0.4)` }}>
         {/* Toggles */}
-        <div style={{ display:"flex", gap:6, marginBottom:22, flexWrap:"wrap", alignItems:"center" }}>
+        <div className="scanner-toggles" style={{ display:"flex", gap:6, marginBottom:22, flexWrap:"wrap", alignItems:"center" }}>
           {[["oneway","One Way"],["return","Return"]].map(([v,l]) => (
             <button key={v} onClick={() => setTrip(v)} style={{
               padding:"5px 14px", borderRadius:99,
@@ -885,7 +917,7 @@ function ScannerPage({ fmt, cur, detecting }) {
                     <span style={{fontFamily:mono,fontSize:10,color:"#07111C"}}>{fmt(r.price)}/person · {r.stops===0?"Non-stop":"Via "+r.via?.c}</span>
                   </div>
                 )}
-                <div onClick={() => setExp(exp===r.id?null:r.id)} style={{
+                <div className="flight-card-grid" onClick={() => setExp(exp===r.id?null:r.id)} style={{
                   display:"grid", gridTemplateColumns:"1fr auto auto",
                   padding:"18px 20px", cursor:"pointer", alignItems:"center",
                 }}>
@@ -1025,7 +1057,7 @@ function TerminalPage({ fmt }) {
       </div>
 
       {/* Stats */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:24}}>
+      <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:24}}>
         {[{l:"Deals found",v:stats.total,c:T.hi},{l:"Price drops",v:stats.drops,c:T.red},{l:"Posts sent",v:stats.posted,c:T.green},{l:"Est. earned",v:`$${stats.earned}`,c:T.gold}].map(s=>(
           <div key={s.l} style={{background:T.card,border:`1px solid ${T.dim}`,borderRadius:14,padding:"16px 18px"}}>
             <div style={{fontFamily:sg,fontSize:12,color:T.lo,marginBottom:4}}>{s.l}</div>
@@ -1053,7 +1085,7 @@ function TerminalPage({ fmt }) {
             const fresh=Date.now()-d.ts.getTime()<6000;
             return (
               <div key={d.id} style={{border:`1px solid ${fresh?d.color:T.dim}`,background:T.card,borderRadius:14,marginBottom:8,overflow:"hidden",transition:"border-color 0.8s"}}>
-                <div style={{display:"grid",gridTemplateColumns:"64px 1fr auto auto",alignItems:"stretch"}}>
+                <div className="deal-card-grid" style={{display:"grid",gridTemplateColumns:"64px 1fr auto auto",alignItems:"stretch"}}>
                   <div style={{padding:"10px 4px",background:`${d.color}08`,borderRight:`1px solid ${T.dim}`,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",gap:3}}>
                     <span style={{fontSize:18}}>{d.r.cor==="EGY"?"🇪🇬":d.r.cor==="MAR"?"🇲🇦":d.r.cor==="DZA"?"🇩🇿":d.r.cor.includes("ZW")?"🇿🇼":d.r.cor.includes("NG")?"🇳🇬":"🌍"}</span>
                     <span style={{fontFamily:mono,fontSize:7,color:d.color,fontWeight:700,textAlign:"center"}}>{d.r.cor}</span>
@@ -1215,8 +1247,8 @@ function Footer({ go }) {
   return (
     <footer style={{background:T.navy,borderTop:`1px solid ${T.dim}`,padding:"52px 24px 28px"}}>
       <div style={{maxWidth:1100,margin:"0 auto"}}>
-        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:40,marginBottom:40}}>
-          <div>
+        <div className="footer-grid" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:40,marginBottom:40}}>
+          <div className="footer-brand">
             <div style={{fontFamily:mono,fontSize:18,fontWeight:700,color:T.hi,marginBottom:10}}>Sky<span style={{color:T.gold}}>Afrika</span></div>
             <p style={{fontFamily:sg,fontSize:13,color:T.lo,lineHeight:1.8,maxWidth:280,marginBottom:20}}>Africa's flight aggregator. One search across every platform. Prices in your local currency, automatically.</p>
           </div>
@@ -1302,3 +1334,12 @@ export default function App() {
   );
 }
 
+  
+
+                
+                             
+                  
+               
+   
+
+         
