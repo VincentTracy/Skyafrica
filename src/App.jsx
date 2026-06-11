@@ -230,7 +230,7 @@ function mkResults(from, to, date) {
       nextDay: tot >= 1440, dur: `${durH}h${durM ? " " + durM + "m" : ""}`,
       stops: direct ? 0 : 1, via: direct ? null : vias[rand(0, vias.length - 1, i * 13)],
       seats: rand(1, 9, i * 17), luggage: rand(0, 1, i * 19) === 1,
-      url: `https://www.aviasales.com/search/${from}${to}`,
+      url: `https://www.aviasales.com/search/${from}${to}?marker=738320`,
     };
   }).sort((a, b) => a.price - b.price);
 }
@@ -257,7 +257,7 @@ function mkDeal() {
     isDrop: Math.random() > 0.4,
     isNew: Math.random() > 0.5,
     ts: new Date(),
-    url: `https://www.aviasales.com/search/${r.from}${r.to}`,
+    url: `https://www.aviasales.com/search/${r.from}${r.to}?marker=738320`,
     color: COR_COLORS[r.cor] || T.gold,
   };
 }
@@ -1335,11 +1335,3 @@ export default function App() {
 }
 
   
-
-                
-                             
-                  
-               
-   
-
-         
