@@ -206,6 +206,128 @@ const COR_COLORS = {
 
 const AIRLINES = ["Ethiopian Air","Qatar Airways","Emirates","Kenya Airways","British Airways","Air Peace","RwandAir","Royal Air Maroc","EgyptAir","SAA"];
 
+// ─── REAL LIVE PRICES (Travelpayouts Data API) ────────────────────────
+// Get your token: travelpayouts.com → Tools → API
+const TP_TOKEN = "f70a6c4aae930163e03e9bd3385399df";
+const TP_MARKER = "738320";
+
+// ─── TRAVEL INSURANCE — informational, factual only ───────────────────
+// Affiliate IDs — replace once approved (via CJ network for World Nomads,
+// direct affiliate dashboards for Battleface / AllClear)
+const INSURANCE_AFF = {
+  worldNomads: "YOUR_WORLDNOMADS_CJ_ID",   // cj.com → search "World Nomads" → Apply
+  battleface:  "YOUR_BATTLEFACE_ID",        // battleface.com/partners
+  allClear:    "YOUR_ALLCLEAR_ID",          // allclear.co.uk affiliate programme
+};
+function insuranceLink(provider, dest) {
+  const base = {
+    worldNomads: `https://www.worldnomads.com/`,
+    battleface:  `https://www.battleface.com/`,
+    allClear:    `https://www.allcleartravel.co.uk/`,
+  }[provider];
+  const id = INSURANCE_AFF[provider];
+  // CJ-style param if an ID has been set; otherwise plain link
+  return id && !id.startsWith("YOUR_") ? `${base}?afid=${id}&dest=${dest}` : base;
+}
+
+// Country-specific medical evacuation cost facts — factual, sourced estimates
+// Used for the "fly informed" insurance callout
+const MEDICAL_FACTS = {
+  ZIM: { country:"Zimbabwe", evac:"£30,000–£80,000", note:"State hospitals have limited capacity for serious conditions; evacuation is typically to South Africa." },
+  NGA: { country:"Nigeria",  evac:"£25,000–£70,000", note:"Private hospitals in Lagos/Abuja can treat many conditions, but evacuation cover is recommended for serious incidents." },
+  EGY: { country:"Egypt",    evac:"£20,000–£60,000", note:"Tourist-area hospitals are generally well equipped; evacuation costs rise for remote-area incidents." },
+  MAR: { country:"Morocco",  evac:"£15,000–£50,000", note:"Major cities have good private healthcare; evacuation to Europe is the typical route for serious cases." },
+  DZA: { country:"Algeria",  evac:"£20,000–£60,000", note:"Healthcare access varies by region; evacuation cover is recommended outside major cities." },
+  ZAF: { country:"South Africa", evac:"£15,000–£45,000", note:"Private healthcare is strong in cities; costs without insurance can still be substantial." },
+};
+
+// Map corridor codes to the relevant country fact
+const CORRIDOR_COUNTRY = { "ZW-SA":"ZIM","ZW-INT":"ZIM","SA-INT":"ZAF","NG":"NGA","EGY":"EGY","MAR":"MAR","DZA":"DZA" };
+
+// Map destination airport codes directly to MEDICAL_FACTS country keys
+const AIRPORT_COUNTRY_CODE = {
+  HRE:"ZIM", BUQ:"ZIM", VFA:"ZIM",
+  JNB:"ZAF", CPT:"ZAF", DUR:"ZAF",
+  LOS:"NGA", ABV:"NGA",
+  CAI:"EGY", CMN:"MAR", RAK:"MAR", ALG:"DZA",
+};
+
+// IATA airline code → display name (common carriers on our routes)
+const AIRLINE_NAMES = {
+  ET:"Ethiopian Airlines", QR:"Qatar Airways", EK:"Emirates", KQ:"Kenya Airways",
+  BA:"British Airways", P4:"Air Peace", WB:"RwandAir", AT:"Royal Air Maroc",
+  MS:"EgyptAir", SA:"South African Airways", FN:"Fastjet", AF:"Air France",
+  LH:"Lufthansa", TK:"Turkish Airlines", VS:"Virgin Atlantic", KL:"KLM",
+  IB:"Iberia", AH:"Air Algerie", MN:"Comair", LX:"Swiss",
+};
+
+// Fetch real cached cheapest prices for a route from Travelpayouts.
+// Tries two endpoints: /v2/prices/latest (cached) and /v1/prices/cheap (calendar)
+async function fetchRealPrices(origin, destination, currency = "usd") {
+  const headers = { "X-Access-Token": TP_TOKEN };
+  try {
+    // Endpoint 1: Latest cached prices (best for specific routes)
+    const url1 = `https://api.travelpayouts.com/v2/prices/latest?currency=${currency}&origin=${origin}&destination=${destination}&limit=15&show_to_affiliates=true&token=${TP_TOKEN}`;
+    const res1 = await fetch(url1, { headers });
+    if (res1.ok) {
+      const json1 = await res1.json();
+      if (json1.success && Array.isArray(json1.data) && json1.data.length > 0) {
+        return json1.data;
+      }
+    }
+    // Endpoint 2: Cheap prices calendar (broader results)
+    const url2 = `https://api.travelpayouts.com/v1/prices/cheap?origin=${origin}&destination=${destination}&currency=${currency}&token=${TP_TOKEN}`;
+    const res2 = await fetch(url2, { headers });
+    if (res2.ok) {
+      const json2 = await res2.json();
+      if (json2.success && json2.data) {
+        // Flatten the nested date structure into an array
+        const flat = [];
+        const dest = json2.data[destination];
+        if (dest) {
+          Object.values(dest).forEach(item => flat.push(item));
+        }
+        if (flat.length > 0) return flat;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Map a Travelpayouts price object into our flight-card shape
+function mapRealResult(d, idx, from, to, pax, m) {
+  const dep = d.depart_date ? new Date(d.depart_date) : null;
+  const durMins = d.duration || 0;
+  let depTime = "--:--", arrTime = "--:--", nextDay = false;
+  if (dep) {
+    depTime = dep.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+    if (durMins) {
+      const arr = new Date(dep.getTime() + durMins*60000);
+      arrTime = arr.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+      nextDay = arr.getDate() !== dep.getDate();
+    }
+  }
+  const durH = Math.floor(durMins/60), durM = durMins%60;
+  const price = Math.round(d.price * m);
+  return {
+    id: `LIVE${idx}`,
+    airline: AIRLINE_NAMES[d.airline] || d.airline || "Various",
+    price, total: price*pax,
+    dep: depTime, arr: arrTime, nextDay,
+    dur: durMins ? `${durH}h${durM?" "+durM+"m":""}` : "—",
+    durMins,
+    stops: d.transfers ?? 0,
+    via: null,
+    seats: null, luggage: null,
+    live: true,
+    url: d.link
+      ? `https://www.aviasales.com${d.link}${d.link.includes("?")?"&":"?"}marker=${TP_MARKER}`
+      : `https://www.aviasales.com/search/${from}${to}?marker=${TP_MARKER}`,
+  };
+}
+
 let _seed = 1;
 function rand(min, max, s = 0) {
   const x = Math.sin(_seed++ + s) * 10000;
@@ -320,6 +442,97 @@ function Tag({ children, color = T.gold, dot = false }) {
 
 function Separator() {
   return <div style={{ height:1, background:`linear-gradient(90deg,transparent,${T.mid},transparent)`, margin:"0" }}/>;
+}
+
+// ─── INSURANCE NOTE — factual, route-aware, links to specialist providers ──
+// "Fly informed, not just cheap" — informational only, not advice
+function InsuranceNote({ corridor, destCountryCode, fmt, compact = false }) {
+  const ccode = destCountryCode || CORRIDOR_COUNTRY[corridor] || null;
+  const fact = ccode ? MEDICAL_FACTS[ccode] : null;
+
+  if (compact) {
+    return (
+      <div style={{
+        marginTop:10, padding:"10px 14px", borderRadius:10,
+        background:T.navy, border:`1px solid ${T.dim}`,
+        display:"flex", gap:10, alignItems:"flex-start",
+      }}>
+        <span style={{fontSize:14, marginTop:1}}>🛡️</span>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:sg, fontSize:12, color:T.md, lineHeight:1.6}}>
+            {fact
+              ? <>Standard travel insurance policies often exclude or restrict cover for <b>{fact.country}</b>. Specialist providers cover routes like this — worth checking before you fly.</>
+              : <>Check that your travel insurance policy covers your destination before booking — some standard policies exclude certain countries.</>
+            }
+          </div>
+          <div style={{display:"flex", gap:8, marginTop:8, flexWrap:"wrap"}}>
+            <a href={insuranceLink("worldNomads", ccode)} target="_blank" rel="noopener noreferrer"
+              style={{fontFamily:mono, fontSize:10, fontWeight:700, color:T.gold, textDecoration:"none", border:`1px solid ${T.gold}40`, borderRadius:6, padding:"4px 10px"}}>
+              World Nomads →
+            </a>
+            <a href={insuranceLink("battleface", ccode)} target="_blank" rel="noopener noreferrer"
+              style={{fontFamily:mono, fontSize:10, fontWeight:700, color:T.gold, textDecoration:"none", border:`1px solid ${T.gold}40`, borderRadius:6, padding:"4px 10px"}}>
+              Battleface →
+            </a>
+            <a href={insuranceLink("allClear", ccode)} target="_blank" rel="noopener noreferrer"
+              style={{fontFamily:mono, fontSize:10, fontWeight:700, color:T.gold, textDecoration:"none", border:`1px solid ${T.gold}40`, borderRadius:6, padding:"4px 10px"}}>
+              AllClear →
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Full version — for the flight results page
+  return (
+    <div style={{
+      marginTop:14, padding:"16px 18px", borderRadius:14,
+      background:T.navy, border:`1px solid ${T.dim}`,
+    }}>
+      <div style={{display:"flex", gap:10, alignItems:"flex-start", marginBottom:fact?10:0}}>
+        <span style={{fontSize:18, marginTop:1}}>🛡️</span>
+        <div>
+          <div style={{fontFamily:sg, fontSize:13, fontWeight:700, color:T.hi, marginBottom:2}}>
+            Fly informed, not just cheap
+          </div>
+          {fact ? (
+            <div style={{fontFamily:sg, fontSize:12.5, color:T.md, lineHeight:1.7}}>
+              Without travel insurance covering <b>{fact.country}</b>, medical evacuation typically costs <b>{fact.evac}</b>.
+              {" "}{fact.note} Standard policies sometimes exclude or restrict cover for this destination — it's worth checking before you fly.
+            </div>
+          ) : (
+            <div style={{fontFamily:sg, fontSize:12.5, color:T.md, lineHeight:1.7}}>
+              Some standard travel insurance policies exclude or restrict cover for certain African destinations.
+              It's worth confirming your destination is covered before booking.
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{display:"flex", gap:10, flexWrap:"wrap", marginTop:fact?12:8}}>
+        {[
+          {key:"worldNomads", label:"World Nomads", desc:"Adventure & long-trip cover"},
+          {key:"battleface",  label:"Battleface",   desc:"Flexible, specialist destinations"},
+          {key:"allClear",    label:"AllClear",     desc:"Pre-existing conditions cover"},
+        ].map(p => (
+          <a key={p.key} href={insuranceLink(p.key, ccode)} target="_blank" rel="noopener noreferrer"
+            style={{
+              flex:"1 1 160px", textDecoration:"none",
+              border:`1px solid ${T.mid}`, borderRadius:10,
+              padding:"10px 12px", transition:"border-color 0.15s",
+            }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=T.gold}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=T.mid}>
+            <div style={{fontFamily:sg, fontSize:12, fontWeight:700, color:T.gold}}>{p.label} →</div>
+            <div style={{fontFamily:sg, fontSize:11, color:T.lo, marginTop:2}}>{p.desc}</div>
+          </a>
+        ))}
+      </div>
+      <div style={{fontFamily:mono, fontSize:9, color:T.ghost, marginTop:10, lineHeight:1.5}}>
+        SkyAfrika may receive a fee for quotes generated via these links. Information shown is a general summary only — see provider terms for full coverage details, exclusions and limitations.
+      </div>
+    </div>
+  );
 }
 
 // ─── CURRENCY PICKER ──────────────────────────────────────────────────
@@ -677,6 +890,11 @@ function HomePage({ go, fmt, detecting }) {
         </div>
       </div>
 
+      {/* ── INSURANCE — fly informed ── */}
+      <div style={{ maxWidth:1100, margin:"0 auto", padding:"0 24px 32px" }}>
+        <InsuranceNote />
+      </div>
+
       {/* ── DISCLOSURE ── */}
       <div style={{ maxWidth:1100, margin:"0 auto 0", padding:"0 24px 32px" }}>
         <div style={{ background:T.goldBg, border:`1px solid ${T.goldRing}`, borderRadius:12, padding:"14px 20px", display:"flex", gap:10, alignItems:"flex-start" }}>
@@ -766,10 +984,25 @@ function ScannerPage({ fmt, cur, detecting }) {
   const today = new Date().toISOString().split("T")[0];
   const ok = from && to && date;
 
-  const doSearch = () => {
+  const [isLive, setIsLive] = useState(false);
+
+  const doSearch = async () => {
     if (!ok) return;
     setLoading(true); setResults([]); setDone(false);
-    setTimeout(() => { setResults(mkResults(from, to, date)); setLoading(false); setDone(true); }, 1700);
+
+    const m = cls==="business" ? 3.4 : cls==="first" ? 6.5 : 1;
+    const real = await fetchRealPrices(from, to, (cur||"usd").toLowerCase());
+
+    if (real && real.length) {
+      const mapped = real.map((d,i) => mapRealResult(d, i, from, to, pax, m)).sort((a,b)=>a.price-b.price);
+      setResults(mapped); setIsLive(true); setLoading(false); setDone(true);
+    } else {
+      // Fallback to estimated prices while live data isn't available for this route
+      setTimeout(() => {
+        setResults(mkResults(from, to, date).map(r=>({...r,total:r.price*pax})));
+        setIsLive(false); setLoading(false); setDone(true);
+      }, 1200);
+    }
   };
 
   const shown = results
@@ -872,7 +1105,7 @@ function ScannerPage({ fmt, cur, detecting }) {
               <Tag key={p}>{p}</Tag>
             ))}
           </div>
-          <div style={{fontFamily:sg,fontSize:13,color:T.lo}}>Comparing fares across all platforms…</div>
+          <div style={{fontFamily:sg,fontSize:13,color:T.lo}}>Fetching live prices from Travelpayouts · Comparing all platforms…</div>
         </div>
       )}
 
@@ -881,8 +1114,15 @@ function ScannerPage({ fmt, cur, detecting }) {
         <div style={{ animation:"fadeIn 0.35s ease-out" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
             <div>
-              <div style={{fontFamily:sg,fontSize:16,fontWeight:600,color:T.hi}}>{shown.length} flights found</div>
-              <div style={{fontFamily:sg,fontSize:12,color:T.lo,marginTop:2}}>Cheapest: <span style={{color:T.gold,fontWeight:700}}>{shown.length?fmt(Math.min(...shown.map(r=>r.price))):"—"}</span></div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <div style={{fontFamily:sg,fontSize:16,fontWeight:600,color:T.hi}}>{shown.length} flights found</div>
+                {isLive ? (
+                  <Tag color={T.green} dot>LIVE PRICES</Tag>
+                ) : (
+                  <Tag color={T.lo}>ESTIMATED · live data unavailable for this route</Tag>
+                )}
+              </div>
+              <div style={{fontFamily:sg,fontSize:12,color:T.lo,marginTop:4}}>Cheapest: <span style={{color:T.gold,fontWeight:700}}>{shown.length?fmt(Math.min(...shown.map(r=>r.price))):"—"}</span></div>
             </div>
             <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
               {[["all","All"],["direct","Direct"],["stops","Stops"]].map(([v,l]) => (
@@ -914,7 +1154,7 @@ function ScannerPage({ fmt, cur, detecting }) {
                 {i===0 && (
                   <div style={{background:"linear-gradient(90deg,#E8A900,#F97316)",padding:"4px 18px",display:"flex",gap:10}}>
                     <span style={{fontFamily:mono,fontSize:10,fontWeight:700,color:"#07111C",letterSpacing:"0.5px"}}>★ BEST PRICE</span>
-                    <span style={{fontFamily:mono,fontSize:10,color:"#07111C"}}>{fmt(r.price)}/person · {r.stops===0?"Non-stop":"Via "+r.via?.c}</span>
+                    <span style={{fontFamily:mono,fontSize:10,color:"#07111C"}}>{fmt(r.price)}/person · {r.stops===0?"Non-stop":(r.via?.c?"Via "+r.via.c:r.stops+" stop"+(r.stops>1?"s":""))}</span>
                   </div>
                 )}
                 <div className="flight-card-grid" onClick={() => setExp(exp===r.id?null:r.id)} style={{
@@ -932,7 +1172,7 @@ function ScannerPage({ fmt, cur, detecting }) {
                         <span style={{fontFamily:sg,fontSize:11,color:T.lo}}>{r.dur}</span>
                         <RouteArc color={r.stops===0?T.green:T.blue} stops={r.stops} w={90}/>
                         <span style={{fontFamily:mono,fontSize:9,fontWeight:700,color:r.stops===0?T.green:T.blue}}>
-                          {r.stops===0?"NON-STOP":`VIA ${r.via?.c}`}
+                          {r.stops===0?"NON-STOP":(r.via?.c?`VIA ${r.via.c}`:`${r.stops} STOP${r.stops>1?"S":""}`)}
                         </span>
                       </div>
                       <div style={{textAlign:"center"}}>
@@ -941,8 +1181,8 @@ function ScannerPage({ fmt, cur, detecting }) {
                       </div>
                     </div>
                     <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap" }}>
-                      {r.seats <= 4 && <Tag color={T.red}>🔥 {r.seats} seats left</Tag>}
-                      <Tag color={r.luggage?T.green:T.ghost}>{r.luggage?"✓ Bag inc.":"✗ Bag extra"}</Tag>
+                      {r.seats != null && r.seats <= 4 && <Tag color={T.red}>🔥 {r.seats} seats left</Tag>}
+                      {r.luggage != null && <Tag color={r.luggage?T.green:T.ghost}>{r.luggage?"✓ Bag inc.":"✗ Bag extra"}</Tag>}
                     </div>
                   </div>
                   <div style={{ padding:"0 20px", textAlign:"right" }}>
@@ -961,7 +1201,8 @@ function ScannerPage({ fmt, cur, detecting }) {
                   </div>
                 </div>
                 {exp===r.id && (
-                  <div style={{borderTop:`1px solid ${T.dim}`,padding:"18px 20px",background:T.navy,display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+                  <div style={{borderTop:`1px solid ${T.dim}`,padding:"18px 20px",background:T.navy}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
                     <div>
                       <div style={{fontFamily:mono,fontSize:10,color:T.gold,letterSpacing:"1.5px",marginBottom:10}}>COMPARE ON ALL PLATFORMS</div>
                       {Object.entries(r.links||{}).map(([p,url])=>(
@@ -981,6 +1222,8 @@ function ScannerPage({ fmt, cur, detecting }) {
                       ))}
                     </div>
                   </div>
+                  <InsuranceNote destCountryCode={AIRPORT_COUNTRY_CODE[to]} compact />
+                </div>
                 )}
               </div>
             ))}
@@ -1334,4 +1577,4 @@ export default function App() {
   );
 }
 
-  
+
